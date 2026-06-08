@@ -4,10 +4,10 @@
   "description": "OpenCode TUI plugin that shows Codex usage in the sidebar footer.",
   "type": "module",
   "exports": {
-    "./tui": "./dist/tui.tsx"
+    "./tui": "./tui.tsx"
   },
   "files": [
-    "dist"
+    "tui.tsx"
   ],
   "keywords": [
     "opencode",
