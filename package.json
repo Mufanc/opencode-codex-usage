@@ -1,6 +1,6 @@
 {
   "name": "@mufanc/opencode-codex-usage",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "OpenCode TUI plugin that shows Codex usage in the sidebar footer.",
   "type": "module",
   "exports": {
