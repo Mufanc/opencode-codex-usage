@@ -1,0 +1,27 @@
+{
+  "name": "@mufanc/opencode-codex-usage",
+  "version": "0.0.1",
+  "description": "OpenCode TUI plugin that shows Codex usage in the sidebar footer.",
+  "type": "module",
+  "exports": {
+    "./tui": "./dist/tui.tsx"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "codex",
+    "usage"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.16.2",
+    "@opentui/solid": "^0.3.4",
+    "solid-js": "^1.9.12"
+  }
+}
