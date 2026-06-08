@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 
 import { createSignal, onCleanup, onMount } from "solid-js"
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { readFile } from "node:fs/promises"
@@ -37,7 +37,10 @@ type UsageResponse = {
 
 const AUTH_PATH = join(homedir(), ".local", "share", "opencode", "auth.json")
 const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-const REFRESH_INTERVAL_MS = 60_000
+const REFRESH_THROTTLE_MS = 60_000
+const WORKSPACE_READY_DELAY_MS = 5_000
+const SUMMARY_KV_KEY = "codex-usage.summary"
+const LAST_REFRESH_AT_KV_KEY = "codex-usage.lastRefreshAt"
 
 async function readAuthFile(): Promise<AuthFile> {
     return JSON.parse(await readFile(AUTH_PATH, "utf8")) as AuthFile
@@ -96,24 +99,62 @@ function formatWindow(window: UsageWindow): string {
     return `${window.label}(${window.remainingPercent}%,${window.resetValue.toFixed(2)}${window.unit})`
 }
 
-function FooterUsage(props: { accent: string; muted: string }) {
-    const [summary, setSummary] = createSignal("Loading...")
+function FooterUsage(props: { api: TuiPluginApi; accent: string; muted: string }) {
+    const cachedSummary = props.api.kv.get<string | undefined>(SUMMARY_KV_KEY)
+    const [summary, setSummary] = createSignal(cachedSummary ?? "Loading...")
+    let refreshing: Promise<void> | undefined
+    const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>()
 
     const refresh = async () => {
         try {
-            setSummary(formatUsageWindows(await fetchUsage()))
+            const nextSummary = formatUsageWindows(await fetchUsage())
+            const refreshedAt = Date.now()
+
+            setSummary(nextSummary)
+            props.api.kv.set(SUMMARY_KV_KEY, nextSummary)
+            props.api.kv.set(LAST_REFRESH_AT_KV_KEY, refreshedAt)
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             setSummary(`Error: ${message}`)
         }
     }
 
+    const refreshIfStale = async () => {
+        if (refreshing) return refreshing
+
+        const lastRefreshAt = props.api.kv.get<number>(LAST_REFRESH_AT_KV_KEY, 0)
+        if (Date.now() - lastRefreshAt <= REFRESH_THROTTLE_MS) return
+
+        refreshing = refresh().finally(() => {
+            refreshing = undefined
+        })
+
+        return refreshing
+    }
+
+    const scheduleRefreshIfStale = (delayMs: number) => {
+        const timeout = setTimeout(() => {
+            pendingTimeouts.delete(timeout)
+            void refreshIfStale()
+        }, delayMs)
+
+        pendingTimeouts.add(timeout)
+    }
+
     onMount(() => {
-        void refresh()
-        const interval = setInterval(() => {
-            void refresh()
-        }, REFRESH_INTERVAL_MS)
-        onCleanup(() => clearInterval(interval))
+        const disposeWorkspaceReady = props.api.event.on("workspace.ready", () => {
+            scheduleRefreshIfStale(WORKSPACE_READY_DELAY_MS)
+        })
+        const disposeSessionIdle = props.api.event.on("session.idle", () => {
+            void refreshIfStale()
+        })
+
+        onCleanup(() => {
+            disposeWorkspaceReady()
+            disposeSessionIdle()
+            for (const timeout of pendingTimeouts) clearTimeout(timeout)
+            pendingTimeouts.clear()
+        })
     })
 
     return (
@@ -130,7 +171,7 @@ const tui: TuiPlugin = async (api) => {
         slots: {
             sidebar_footer() {
                 return (
-                    <FooterUsage accent={api.theme.current.accent} muted={api.theme.current.textMuted} />
+                    <FooterUsage api={api} accent={api.theme.current.accent} muted={api.theme.current.textMuted} />
                 )
             },
         },
