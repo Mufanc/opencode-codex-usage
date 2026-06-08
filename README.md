@@ -2,6 +2,8 @@
 
 OpenCode TUI plugin that shows Codex usage in the sidebar.
 
+![](./screenshot.png)
+
 ## Install
 
 Install the plugin with OpenCode:
