@@ -35,6 +35,12 @@ type UsageResponse = {
     }
 }
 
+type Placement = "sidebar-content" | "sidebar-footer"
+
+type PluginConfig = {
+    placement?: Placement
+}
+
 const AUTH_PATH = join(homedir(), ".local", "share", "opencode", "auth.json")
 const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 const REFRESH_THROTTLE_MS = 60_000
@@ -99,7 +105,25 @@ function formatWindow(window: UsageWindow): string {
     return `${window.label}(${window.remainingPercent}%,${window.resetValue.toFixed(2)}${window.unit})`
 }
 
-function SidebarUsage(props: { api: TuiPluginApi; accent: string; muted: string }) {
+function abbreviateHome(path: string): string {
+    const home = homedir()
+    if (path === home) return "~"
+    if (path.startsWith(`${home}/`)) return `~${path.slice(home.length)}`
+    return path
+}
+
+function resolvePlacement(options: unknown): Placement {
+    const placement = (options as PluginConfig | undefined)?.placement
+    return placement === "sidebar-content" ? "sidebar-content" : "sidebar-footer"
+}
+
+function SidebarUsage(props: {
+    api: TuiPluginApi
+    accent: string
+    muted: string
+    sessionID: string
+    placement: Placement
+}) {
     const cachedSummary = props.api.kv.get<string | undefined>(SUMMARY_KV_KEY)
     const [summary, setSummary] = createSignal(cachedSummary ?? "Loading...")
     let refreshing: Promise<void> | undefined
@@ -157,24 +181,60 @@ function SidebarUsage(props: { api: TuiPluginApi; accent: string; muted: string 
         })
     })
 
+    const footerPath = () => {
+        const session = props.api.state.session.get(props.sessionID)
+        const dir = session?.directory || props.api.state.path.directory || props.api.state.path.worktree
+        const branch = session?.directory === props.api.state.path.directory ? props.api.state.vcs?.branch : undefined
+        const text = branch ? `${abbreviateHome(dir)}:${branch}` : abbreviateHome(dir)
+        const parts = text.split("/")
+
+        return {
+            parent: parts.slice(0, -1).join("/"),
+            name: parts.at(-1) ?? "",
+        }
+    }
+
+    if (props.placement === "sidebar-content") {
+        return (
+            <box flexDirection="column">
+                <text fg={props.api.theme.current.text}>
+                    <b>Codex Usage</b>
+                </text>
+                <text fg={props.accent}>{summary()}</text>
+            </box>
+        )
+    }
+
     return (
-        <box flexDirection="column">
-            <text fg={props.api.theme.current.text}>
-                <b>Codex Usage</b>
+        <box gap={1}>
+            <text>
+                <span style={{ fg: props.api.theme.current.textMuted }}>{footerPath().parent}/</span>
+                <span style={{ fg: props.api.theme.current.text }}>{footerPath().name}</span>
             </text>
-            <text fg={props.accent}>{summary()}</text>
+            <box flexDirection="column">
+                <text fg={props.api.theme.current.text}>
+                    <b>Codex Usage</b>
+                </text>
+                <text fg={props.accent}>{summary()}</text>
+            </box>
         </box>
     )
 }
 
-const tui: TuiPlugin = async (api) => {
+const tui: TuiPlugin = async (api, options) => {
+    const placement = resolvePlacement(options)
+    const order = placement === "sidebar-footer" ? 50 : 1000
+
     api.slots.register({
-        order: 1000,
+        order,
         slots: {
-            sidebar_content() {
-                return (
-                    <SidebarUsage api={api} accent={api.theme.current.accent} muted={api.theme.current.textMuted} />
-                )
+            sidebar_content(_ctx, props) {
+                if (placement !== "sidebar-content") return null
+                return <SidebarUsage api={api} accent={api.theme.current.accent} muted={api.theme.current.textMuted} sessionID={props.session_id} placement={placement} />
+            },
+            sidebar_footer(_ctx, props) {
+                if (placement !== "sidebar-footer") return null
+                return <SidebarUsage api={api} accent={api.theme.current.accent} muted={api.theme.current.textMuted} sessionID={props.session_id} placement={placement} />
             },
         },
     })
