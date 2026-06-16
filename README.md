@@ -9,13 +9,13 @@ OpenCode TUI plugin that shows Codex usage in the sidebar.
 Install the plugin with OpenCode:
 
 ```bash
-opencode plugin @mufanc/opencode-codex-usage
+opencode plugin -g @mufanc/opencode-codex-usage
 ```
 
 For local testing, you can install from a local path instead:
 
 ```bash
-opencode plugin /absolute/path/to/opencode-codex-usage
+opencode plugin -g /absolute/path/to/opencode-codex-usage
 ```
 
 Then restart OpenCode.
